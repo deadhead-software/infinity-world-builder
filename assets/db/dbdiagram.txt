@@ -1,0 +1,641 @@
+// ==================================================================
+// INFINITY WORLD BUILDER
+// SQLite (on-device), C++, Qt
+// ==================================================================
+// DESIGN PRINCIPLES:
+//   - Hardcoded attribute tables hold commonly used values.
+//   - custom_fields extends ANY entity with arbitrary author-defined
+//     data. custom_field_definitions defines what fields an entity
+//     type should offer, scoped by setting.
+//   - Calendars is meant to be used solely by the application's implementation
+//     or in the future by Fantasy Calendar API.
+//   - Player characters use a thin hardcoded table for universal
+//     TTRPG concepts (player ownership, system, active state) and
+//     custom_field_definitions for all system-specific stats.
+//   - Maps are rendered natively using Qt. Coordinates are 
+//     stored as normalized floats (0.0-1.0) relative to image dimensions for resolution
+//     independence. Images are tiled for performance on large maps. 
+//   - Synch support will be added later.
+// ==================================================================
+
+
+// ==================================================================
+// PROFILES
+// Local user/author profiles. 
+// For tabletop use, a DM can create player profiles and assign
+// visibility rules against them.
+// ==================================================================
+
+Table profiles {
+  id          integer   [primary key]
+  name        text      [not null]
+  role        text      [not null, note: 'author | player | viewer']
+  is_default  bool      [default: false, note: 'the active profile used at launch']
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+
+// ==================================================================
+// CORE: SETTINGS, CHRONICLES, ENTITIES
+// ==================================================================
+
+Table settings {
+  id          integer   [primary key]
+  name        text      [not null, unique]
+  file_path   text      [note: 'path to setting overview/description file']
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+Table chronicles {
+  id          integer   [primary key]
+  setting_id  integer   [ref: > settings.id, not null]
+  name        text      [not null]
+  genre       text      [note: 'free text — no enum, per creative-freedom goal']
+  file_path   text
+  indexes {
+    (setting_id, name) [unique]
+    setting_id
+  }
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+Table entities {
+  id          integer   [primary key]
+  setting_id  integer   [ref: > settings.id, not null]
+  name        text      [not null]
+  type        text      [not null, note: 'character | faction | location | species | item_template | item_instance | event | map | resource | other']
+  file_path   text      [note: 'path to main descriptive body text file']
+  indexes {
+    setting_id
+    type
+  }
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+Table entity_chronicles {
+  id            integer   [primary key]
+  entity_id     integer   [ref: > entities.id, not null]
+  chronicle_id  integer   [ref: > chronicles.id, not null]
+  role          text      [note: 'optional: major | cameo | mentioned | antagonist | etc. — free text']
+  indexes {
+    (entity_id, chronicle_id) [unique]
+    entity_id
+    chronicle_id
+  }
+  created       timestamp
+  deleted_at    timestamp
+}
+
+
+// ==================================================================
+// VISIBILITY & SECRETS
+// ==================================================================
+
+Table visibility {
+  id              integer   [primary key]
+  entity_id       integer   [ref: > entities.id, not null]
+  field_name      text      [note: 'null = entire entity; otherwise the specific field name']
+  visible_to      text      [not null, note: 'public | author | player | viewer | profile']
+  visible_to_id   integer   [ref: > profiles.id, note: 'nullable — used when visible_to = profile']
+  indexes {
+    entity_id
+    visible_to_id
+  }
+  updated         timestamp
+  deleted_at      timestamp
+}
+
+
+// ==================================================================
+// CUSTOM FIELD DEFINITIONS
+// ==================================================================
+// Defines WHAT fields an entity type should will be within a setting.
+
+Table custom_field_definitions {
+  id              integer   [primary key]
+  setting_id      integer   [ref: > settings.id, not null]
+  entity_type     text      [not null, note: 'character | faction | location | species | item_template | item_instance | event | map | resource | other']
+  key             text      [not null, note: 'field label shown in UI, e.g. "Allomantic Metal"']
+  field_type      text      [not null, note: 'text | int | real | bool | date_ref | entity_ref | multiline']
+  default_value   text      [note: 'optional serialised default; always stored as text and cast on read']
+  sort_order      integer
+  is_required     bool      [default: false]
+  is_secret       bool      [default: false, note: 'default visibility for instances of this field']
+  indexes {
+    setting_id
+    (setting_id, entity_type) [note: 'primary lookup path — all field defs for a given entity type in a setting']
+  }
+  created         timestamp
+  updated         timestamp
+  deleted_at      timestamp
+}
+
+
+// ==================================================================
+// CUSTOM FIELDS
+// ==================================================================
+// Stores VALUES for author-defined attributes on any entity.
+
+Table custom_fields {
+  id              integer   [primary key]
+  entity_id       integer   [ref: > entities.id, not null]
+  definition_id   integer   [ref: > custom_field_definitions.id, not null]
+  field_type      text      [not null, note: 'text | int | real | bool | date_ref | entity_ref | multiline']
+  value_text      text
+  value_int       integer
+  value_real      real
+  value_bool      bool
+  ref_entity_id   integer   [ref: > entities.id,      note: 'used when field_type = entity_ref']
+  ref_date_id     integer   [ref: > fantasy_dates.id, note: 'used when field_type = date_ref']
+  is_secret       bool      [default: false, note: 'overrides definition default for this specific instance']
+  indexes {
+    entity_id
+    definition_id
+    ref_entity_id
+    ref_date_id
+  }
+  created         timestamp
+  updated         timestamp
+  deleted_at      timestamp
+}
+
+
+// ==================================================================
+// TAGS
+// ==================================================================
+
+Table tags {
+  id          integer   [primary key]
+  setting_id  integer   [ref: > settings.id, not null]
+  name        text      [not null]
+  color       text      [note: 'hex color string for UI display']
+  indexes {
+    (setting_id, name) [unique]
+    setting_id
+  }
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+/// join table below
+Table entity_tags {
+  id          integer   [primary key]
+  entity_id   integer   [ref: > entities.id, not null]
+  tag_id      integer   [ref: > tags.id,     not null]
+  indexes {
+    (entity_id, tag_id) [unique]
+    entity_id
+    tag_id
+  }
+  created     timestamp
+  deleted_at  timestamp
+}
+
+
+// ==================================================================
+// RELATIONSHIPS
+// ==================================================================
+
+Table relationships {
+  id                integer   [primary key]
+  entity_a          integer   [ref: > entities.id,   not null]
+  entity_b          integer   [ref: > entities.id,   not null]
+  type              text      [not null, note: 'free text: mentor | enemy | controls | allied | forged | worships | parent of | etc.']
+  description       text
+  is_bidirectional  bool      [default: false, note: 'false = directional A→B; true = mutual']
+  chronicle_id      integer   [ref: > chronicles.id, note: 'optional: relationship scoped to a specific chronicle']
+  date_start        integer   [ref: > fantasy_dates.id, note: 'when the relationship began']
+  date_end          integer   [ref: > fantasy_dates.id, note: 'when it ended — null = ongoing']
+  indexes {
+    entity_a
+    entity_b
+    chronicle_id
+  }
+  created           timestamp
+  updated           timestamp
+  deleted_at        timestamp
+}
+
+
+// ==================================================================
+// ATTRIBUTE TABLES
+// ==================================================================
+
+Table character_attributes {
+  id                integer   [primary key]
+  entity_id         integer   [ref: > entities.id, not null]
+  first_name        text      [not null]
+  middle_name       text
+  surname           text
+  parent_f          integer   [ref: - character_attributes.id, note: 'father — self-referencing FK']
+  parent_m          integer   [ref: - character_attributes.id, note: 'mother — self-referencing FK']
+  species_entity_id integer   [ref: > entities.id, note: 'FK to an entity of type = species']
+  dob               integer   [ref: > fantasy_dates.id, note: 'date of birth']
+  dod               integer   [ref: > fantasy_dates.id, note: 'date of death']
+  file_path         text
+  indexes {
+    entity_id
+    species_entity_id
+    dob
+    dod
+  }
+  created           timestamp
+  updated           timestamp
+  deleted_at        timestamp
+}
+
+// ==================================================================
+// PLAYER CHARACTER ATTRIBUTES
+// ==================================================================
+
+Table player_character_attributes {
+  id              integer   [primary key]
+  entity_id       integer   [ref: > entities.id,    not null, note: 'the character entity this PC record extends']
+  profile_id      integer   [ref: > profiles.id,    not null, note: 'the player who owns and plays this character']
+  chronicle_id    integer   [ref: > chronicles.id,  not null, note: 'the campaign/chronicle this character is active in']
+  indexes {
+    entity_id
+    profile_id
+    chronicle_id
+    (profile_id, chronicle_id) [note: 'primary lookup — all PCs for a player in a given campaign']
+  }
+  created           timestamp
+  updated           timestamp
+  deleted_at        timestamp
+}
+
+Table faction_attributes {
+  id                  integer   [primary key]
+  entity_id           integer   [ref: > entities.id, not null]
+  parent_faction_id   integer   [ref: > entities.id, note: 'FK to a parent faction entity']
+  dof                 integer   [ref: > fantasy_dates.id, note: 'date of founding']
+  dod                 integer   [ref: > fantasy_dates.id, note: 'date of dissolution']
+  file_path           text
+  indexes {
+    entity_id
+    parent_faction_id
+  }
+  created             timestamp
+  updated             timestamp
+  deleted_at          timestamp
+}
+
+Table location_attributes {
+  id          integer   [primary key]
+  entity_id   integer   [ref: > entities.id, not null]
+  parent_id   integer   [ref: > entities.id, note: 'parent location entity — region, planet, plane, etc.']
+  doc         integer   [ref: > fantasy_dates.id, note: 'date of creation or founding']
+  dod         integer   [ref: > fantasy_dates.id, note: 'date of destruction or abandonment']
+  file_path   text
+  indexes {
+    entity_id
+    parent_id
+  }
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+Table location_types {
+  id            integer   [primary key]
+  location_id   integer   [ref: > location_attributes.id, not null]
+  name          text      [not null, note: 'free text: city | town | cave | planet | plane | dungeon | etc.']
+  indexes {
+    location_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table species_attributes {
+  id                  integer   [primary key]
+  entity_id           integer   [ref: > entities.id, not null]
+  type                text      [note: 'free text']
+  file_path           text
+  indexes {
+    entity_id
+  }
+  created             timestamp
+  updated             timestamp
+  deleted_at          timestamp
+}
+
+Table item_templates {
+  id          integer   [primary key]
+  entity_id   integer   [ref: > entities.id, not null]
+  magic       bool
+  rarity      text      [note: 'free text: common | uncommon | rare | legendary | etc.']
+  file_path   text
+  indexes {
+    entity_id
+  }
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+Table item_types {
+  id          integer   [primary key]
+  item_id     integer   [ref: > item_templates.id, not null]
+  name        text      [not null, note: 'free text: weapon | potion | cursed | consumable | etc.']
+  indexes {
+    item_id
+  }
+  created     timestamp
+  updated     timestamp
+  deleted_at  timestamp
+}
+
+Table item_instances {
+  id                integer   [primary key]
+  entity_id         integer   [ref: > entities.id, not null, note: 'instances are full entities — enabling chronicles, custom_fields, relationships, media']
+  item_template_id  integer   [ref: > item_templates.id, note: 'nullable: wholly unique items may have no template']
+  magic             bool      [note: 'overrides template value when set']
+  rarity            text      [note: 'overrides template value when set']
+  owner_entity_id   integer   [ref: > entities.id, note: 'current owner — any entity, not only characters']
+  doc               integer   [ref: > fantasy_dates.id, note: 'date of creation or forging']
+  dod               integer   [ref: > fantasy_dates.id, note: 'date of destruction or loss']
+  indexes {
+    entity_id
+    item_template_id
+    owner_entity_id
+  }
+  created           timestamp
+  updated           timestamp
+  deleted_at        timestamp
+}
+
+Table event_attributes {
+  id            integer   [primary key]
+  entity_id     integer   [ref: > entities.id, not null]
+  chronicle_id  integer   [ref: > chronicles.id, note: 'optional: primary chronicle this event belongs to']
+  date_start    integer   [ref: > fantasy_dates.id]
+  date_end      integer   [ref: > fantasy_dates.id, note: 'null = instantaneous event']
+  file_path     text
+  indexes {
+    entity_id
+    chronicle_id
+    date_start
+    date_end
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table event_entities {
+  id          integer   [primary key]
+  event_id    integer   [ref: > event_attributes.id, not null]
+  entity_id   integer   [ref: > entities.id,         not null]
+  role        text      [note: 'free text: participant | location | instigator | victim | witness | etc.']
+  indexes {
+    (event_id, entity_id) [unique]
+    event_id
+    entity_id
+  }
+  created     timestamp
+  deleted_at  timestamp
+}
+
+
+// ==================================================================
+// MAPS
+// ==================================================================
+
+Table map_attributes {
+  id                  integer   [primary key]
+  entity_id           integer   [ref: > entities.id, not null]
+  file_path           text      [not null, note: 'path to the tile directory generated on import']
+  original_file_path  text      [note: 'path to the original source image before tiling']
+  width_px            integer   [not null, note: 'original image width in pixels — used to denormalise coordinates for display']
+  height_px           integer   [not null, note: 'original image height in pixels']
+  scale_value         real      [note: 'numeric scale value, e.g. 50']
+  scale_unit          text      [note: 'unit label for display, e.g. "miles per inch" or "km per hex"']
+  default_zoom        real      [default: 1.0, note: 'initial zoom level when the map is opened']
+  indexes {
+    entity_id
+  }
+  created             timestamp
+  updated             timestamp
+  deleted_at          timestamp
+}
+
+Table map_layers {
+  id            integer   [primary key]
+  map_id        integer   [ref: > map_attributes.id, not null]
+  name          text      [not null, note: 'e.g. "Political", "Geographic", "DM Notes", "Session 4"']
+  is_visible    bool      [default: true]
+  opacity       real      [default: 1.0, note: '0.0 fully transparent to 1.0 fully opaque']
+  sort_order    integer   [not null, note: 'render order — lower numbers drawn first (bottom)']
+  indexes {
+    map_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table map_pins {
+  id            integer   [primary key]
+  map_id        integer   [ref: > map_attributes.id, not null]
+  layer_id      integer   [ref: > map_layers.id,     not null]
+  entity_id     integer   [ref: > entities.id, note: 'optional: the entity this pin represents (location, event, faction HQ, etc.)']
+  label         text      [note: 'display label — defaults to entity name if linked, otherwise free text']
+  x             real      [not null, note: 'normalized horizontal position 0.0–1.0 relative to image width']
+  y             real      [not null, note: 'normalized vertical position 0.0–1.0 relative to image height']
+  icon_type     text      [note: 'free text icon key: city | town | dungeon | battle | ruin | capital | custom | etc.']
+  icon_color    text      [note: 'hex color override for this pin']
+  indexes {
+    map_id
+    layer_id
+    entity_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table map_regions {
+  id            integer   [primary key]
+  map_id        integer   [ref: > map_attributes.id, not null]
+  layer_id      integer   [ref: > map_layers.id,     not null]
+  entity_id     integer   [ref: > entities.id, note: 'optional: the entity this region represents (faction territory, kingdom, biome, etc.)']
+  label         text
+  points        text      [not null, note: 'JSON array of {x, y} normalized coordinate objects defining the polygon']
+  fill_color    text      [note: 'hex fill color']
+  fill_opacity  real      [default: 0.3]
+  stroke_color  text      [note: 'hex border color']
+  stroke_width  real      [default: 1.0]
+  indexes {
+    map_id
+    layer_id
+    entity_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+
+// ==================================================================
+// CALENDARS
+// ==================================================================
+Table calendars {
+  id                      integer   [primary key]
+  setting_id              integer   [ref: > settings.id, not null]
+  name                    text      [not null]
+  calendar_type           text      [not null, note: 'fantasy | gregorian | julian | hebrew | islamic | other']
+  is_real_world           bool      [default: false, note: 'true = skip month/weekday tables; use ISO dates']
+  week_length             integer   [note: 'days per week; null for real-world calendars']
+  year_zero_exists        bool      [default: false]
+  overflow_type           text      [note: 'how leftover intercalary days are handled: none | skip | distribute — matches FC']
+  fantasy_calendar_id     text      [note: 'ID from fantasycalendar.com if this calendar is synced there']
+  fantasy_calendar_json   text      [note: 'raw JSON in FC format — used as the import/export/sync bridge']
+  notes                   text
+  indexes {
+    (setting_id, name) [unique]
+    setting_id
+  }
+  created                 timestamp
+  updated                 timestamp
+  deleted_at              timestamp
+}
+
+Table calendar_months {
+  id              integer   [primary key]
+  calendar_id     integer   [ref: > calendars.id, not null]
+  name            text      [not null]
+  abbreviation    text
+  length          integer   [not null, note: 'number of days in this month']
+  is_intercalary  bool      [default: false, note: 'intercalary months fall outside the normal week cycle']
+  sort_order      integer   [not null]
+  indexes {
+    calendar_id
+  }
+  created         timestamp
+  updated         timestamp
+  deleted_at      timestamp
+}
+
+Table calendar_weekdays {
+  id            integer   [primary key]
+  calendar_id   integer   [ref: > calendars.id, not null]
+  name          text      [not null]
+  abbreviation  text
+  sort_order    integer   [not null]
+  indexes {
+    calendar_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table calendar_eras {
+  id            integer   [primary key]
+  calendar_id   integer   [ref: > calendars.id, not null]
+  name          text      [not null]
+  abbreviation  text      [note: 'e.g. FA, 3E, CE, BCE']
+  start_year    integer   [not null, note: 'year number in abs_day terms when this era begins']
+  is_ascending  bool      [default: true, note: 'false for countdown eras like BCE']
+  indexes {
+    calendar_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table calendar_moons {
+  id            integer   [primary key]
+  calendar_id   integer   [ref: > calendars.id, not null]
+  name          text      [not null]
+  cycle_length  real      [not null, note: 'lunar cycle in days; real to allow fractional cycles e.g. 29.5']
+  phase_offset  integer   [default: 0, note: 'phase offset in days from abs_day 0 — matches FC moon offset field']
+  color         text      [note: 'hex color for UI display']
+  is_hidden     bool      [default: false, note: 'FC supports hidden moons; retained for round-trip fidelity']
+  indexes {
+    calendar_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+Table fantasy_dates {
+  id              integer   [primary key]
+  calendar_id     integer   [ref: > calendars.id, not null]
+  name            text      [note: 'optional named date: "The Battle of Five Armies", "First Founding", etc.']
+  yr              integer
+  month           integer   [note: 'sort_order of the month in calendar_months; null for real-world dates']
+  day             integer
+  era_id          integer   [ref: > calendar_eras.id, note: 'which era this date belongs to']
+  abs_day         integer   [note: 'absolute day count from calendar epoch — used for date math and FC API compatibility']
+  real_world_iso  text      [note: 'ISO 8601 string YYYY-MM-DD for real-world calendar entries; null for fantasy']
+  display_text    text      [note: 'cached human-readable string so the display layer never recalculates']
+  indexes {
+    calendar_id
+    abs_day
+    era_id
+  }
+  created         timestamp
+  updated         timestamp
+  deleted_at      timestamp
+}
+
+
+// ==================================================================
+// MEDIA
+// ==================================================================
+
+Table media {
+  id            integer   [primary key]
+  entity_id     integer   [ref: > entities.id, not null]
+  file_path     text      [not null, note: 'path to the file in the user local worldbuilding directory']
+  media_type    text      [not null, note: 'image | audio | video | document | map']
+  caption       text
+  width         integer   [note: 'pixel width — stored so UI can lay out without opening the file']
+  height        integer   [note: 'pixel height — stored so UI can lay out without opening the file']
+  file_size     integer   [note: 'size in bytes']
+  is_primary    bool      [default: false, note: 'main display image or media for this entity']
+  indexes {
+    entity_id
+  }
+  created       timestamp
+  updated       timestamp
+  deleted_at    timestamp
+}
+
+
+// ==================================================================
+// EXPORT TEMPLATES
+// ==================================================================
+
+Table export_templates {
+  id              integer   [primary key]
+  setting_id      integer   [ref: > settings.id, not null]
+  name            text      [not null, note: 'e.g. "Player Handout", "Full World Bible"']
+  format          text      [not null, note: 'pdf | markdown | json | html | docx']
+  included_types  text      [note: 'JSON array of entity types to include e.g. ["character","location","faction"]']
+  include_secrets bool      [default: false, note: 'whether DM/author-only fields are included in this export']
+  chronicle_id    integer   [ref: > chronicles.id, note: 'optional: scope export to one chronicle']
+  sort_by         text      [note: 'name | type | created | updated — ordering of exported entities']
+  notes           text      [note: 'author notes about the purpose or audience for this template']
+  indexes {
+    setting_id
+    chronicle_id
+  }
+  created         timestamp
+  updated         timestamp
+  deleted_at      timestamp
+}
