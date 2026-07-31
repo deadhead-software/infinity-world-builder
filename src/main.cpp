@@ -18,8 +18,7 @@ void iwb_main::initialize()
 
 
 int main() {
-    iwb_main iwb;
-    iwb.initialize();
-    iwb.get_logger()->info("Logger initialized and IWB ready to go.");
+    iwb_main::get_instance().initialize();
+    iwb_main::get_instance().get_logger()->info("Logger initialized and IWB ready to go.");
     return 0;
 }
