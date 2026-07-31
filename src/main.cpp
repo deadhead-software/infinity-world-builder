@@ -1,8 +1,5 @@
 #include <iostream>
 #include "main.h"
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/basic_file_sink.h" // support for basic file logging
-#include "spdlog/sinks/rotating_file_sink.h" // support for rotating file logging
 
 
 std::shared_ptr<spdlog::logger> iwb_main::get_logger()
