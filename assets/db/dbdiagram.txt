@@ -91,6 +91,7 @@ Table entity_chronicles {
     chronicle_id
   }
   created       timestamp
+  updated	timestamp
   deleted_at    timestamp
 }
 
