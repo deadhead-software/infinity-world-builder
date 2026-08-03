@@ -5,6 +5,7 @@
 #include "spdlog/logger.h"
 #include "spdlog/async_logger.h"
 #include "backend/dbio/dbio.h"
+#include "backend/file_io/file_io.h"
 
 class iwb_main
 {
@@ -29,6 +30,8 @@ class iwb_main
 
         /// @brief main database interaction module instantiation
         DBIO::dbio_main dbio;
+
+        FILE_IO::file_io_main file_io;
 
 
 

@@ -23,12 +23,13 @@ bool iwb_main::initialize_modules()
      try
      {
          dbio.initialize();
+         file_io.initialize();
      }
      catch(const std::exception& e)
      {
          if (logger != nullptr)
          {
-             logger->critical("DBIO failed to initialize, failing.");
+             logger->critical("Modules failed to initialize, failing.");
              return false;
          }
     }
