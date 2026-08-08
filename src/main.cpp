@@ -72,5 +72,5 @@ int main() {
         return 1; // return fail condition.
     }
     iwb_main::get_instance().get_logger()->info("Logger initialized and IWB ready to go.");
-    return 0;
+    while (1) {}; // wait so all logs get there
 }
