@@ -1,16 +1,30 @@
 {
-    "version": 8,
+    "version": 3,
     "configurePresets": [
         {
-            "name": "Clang++",
-            "displayName": "Clang 17.0.0 arm64-apple-darwin24.6.0",
-            "description": "Using compilers: C = /usr/bin/clang, CXX = /usr/bin/clang++",
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "name": "mac-clang",
+            "displayName": "macOS Clang",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-                "CMAKE_C_COMPILER": "/usr/bin/clang",
-                "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
                 "CMAKE_BUILD_TYPE": "Debug"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "win-clang",
+            "displayName": "Windows Clang-CL",
+            "generator": "Visual Studio 17 2022",
+            "toolset": "ClangCL",
+            "binaryDir": "${sourceDir}/build",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
             }
         }
     ]
