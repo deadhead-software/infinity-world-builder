@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 23)
 add_executable(infinity-world-builder)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+add_custom_command(
+    TARGET infinity-world-builder POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/db/seed/seed_db.db"
+        "$<TARGET_FILE_DIR:infinity-world-builder>/seed_db.db"
+)
+
 
 target_sources(infinity-world-builder PRIVATE 
 # Define the executable and its source files
